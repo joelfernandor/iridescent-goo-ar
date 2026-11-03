@@ -60,8 +60,8 @@
 </head>
 <body class="relative w-screen h-screen bg-black">
 
-    <!-- HIDDEN CAMERA VIDEO INPUT -->
-    <video id="webcam" class="hidden" playsinline webkit-playsinline muted></video>
+    <!-- HIDDEN CAMERA VIDEO INPUT FOR IOS/IPAD SAFARI -->
+    <video id="webcam" class="hidden" playsinline webkit-playsinline muted autoplay></video>
 
     <!-- AR VIEW CONTAINER (Mirrored for front-facing intuitive controls) -->
     <div id="ar-container" class="relative w-full h-full ar-mirror overflow-hidden">
@@ -79,14 +79,19 @@
                 <div class="flex items-center gap-2">
                     <div id="status-dot" class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse"></div>
                     <span id="status-text" class="text-xs md:text-sm font-semibold tracking-wider text-cyan-300 uppercase">
-                        Waiting for Hands...
+                        Waiting for Hand...
                     </span>
                 </div>
                 
-                <!-- Temperature Reading -->
-                <div class="flex items-baseline gap-1">
-                    <span id="temp-value" class="text-2xl md:text-3xl font-bold font-mono text-cyan-300">25</span>
-                    <span class="text-sm font-bold text-gray-400">°C</span>
+                <!-- Speed & Temperature Reading -->
+                <div class="flex items-center gap-4">
+                    <div class="text-xs text-cyan-400/80 font-mono hidden sm:block">
+                        Friction: <span id="speed-value" class="font-bold text-white">0.0</span> m/s
+                    </div>
+                    <div class="flex items-baseline gap-1">
+                        <span id="temp-value" class="text-2xl md:text-3xl font-bold font-mono text-cyan-300">25</span>
+                        <span class="text-sm font-bold text-gray-400">°C</span>
+                    </div>
                 </div>
             </div>
 
@@ -137,30 +142,30 @@
 
             <div class="space-y-2">
                 <h1 class="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-cyan-300 via-purple-300 to-amber-200 bg-clip-text text-transparent">
-                    WebAR Iridescent Goo
+                    Ditto/Flubber WebAR Slime
                 </h1>
                 <p class="text-xs md:text-sm text-gray-300 leading-relaxed">
-                    Instantiate interactive iridescent goo with your front camera. Knead and stretch it between two hands to build up dynamic thermal heat!
+                    Spawn a localized squishy soft-body goo blob over your hand. Stretch and knead it like flour dough between both hands to generate incandescent thermal lava heat!
                 </p>
             </div>
 
             <div class="w-full bg-white/5 rounded-2xl p-4 text-left text-xs text-gray-300 space-y-2.5 border border-white/10">
                 <div class="flex items-center gap-2">
                     <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-[10px]">1</span>
-                    <span>Allow camera access (front camera view)</span>
+                    <span>Allow camera access (iPad / Mobile front FaceTime camera)</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-[10px]">2</span>
-                    <span>Show 1 hand to spawn the iridescent goo blob</span>
+                    <span>Show 1 hand to spawn the compact squishy orb</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-[10px]">3</span>
-                    <span>Bring in hand 2 to grab, stretch & knead fast</span>
+                    <span>Bring second hand close to grab & stretch dough fast</span>
                 </div>
             </div>
 
             <button id="start-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white font-bold tracking-wider hover:opacity-90 transition transform active:scale-95 shadow-lg shadow-cyan-500/25">
-                START EXPERIENCE
+                TAP TO START (UNLOCK AUDIO/CAMERA)
             </button>
             <p id="error-msg" class="text-xs text-rose-400 hidden"></p>
         </div>
@@ -228,10 +233,15 @@
                 this.stretchOsc.start();
             }
 
+            async resume() {
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    await this.ctx.resume();
+                }
+            }
+
             updateThermalSound(heat) {
                 if (!this.ctx || this.isMuted) return;
                 const now = this.ctx.currentTime;
-                // Volume ramps up with heat
                 const targetGain = Math.pow(heat, 2.0) * 0.15;
                 const targetFreq = 400 + heat * 1200;
                 this.sizzleGain.gain.setTargetAtTime(targetGain, now, 0.1);
@@ -241,8 +251,8 @@
             triggerStretchSound(motionSpeed) {
                 if (!this.ctx || this.isMuted) return;
                 const now = this.ctx.currentTime;
-                const pitch = 150 + Math.min(motionSpeed * 300, 600);
-                const vol = Math.min(motionSpeed * 0.2, 0.12);
+                const pitch = 160 + Math.min(motionSpeed * 280, 550);
+                const vol = Math.min(motionSpeed * 0.18, 0.14);
                 this.stretchOsc.frequency.setTargetAtTime(pitch, now, 0.05);
                 this.stretchGain.gain.setTargetAtTime(vol, now, 0.05);
                 this.stretchGain.gain.setTargetAtTime(0, now + 0.15, 0.1);
@@ -275,7 +285,7 @@
 
         const audioEngine = new GooAudioEngine();
 
-        // --- 2. GLSL SHADER DEFINITIONS FOR IRIDESCENT & THERMAL GOO ---
+        // --- 2. GLSL SHADER DEFINITIONS FOR LOCALIZED FLUBBER/DITTO GOO ---
         const gooVertexShader = `
             uniform float uTime;
             uniform float uHeat;
@@ -338,42 +348,75 @@
             }
 
             void main() {
-                vAxisT = (position.y + 1.0) * 0.5; // Normalized axis [0..1]
-                vec3 worldPos;
-                vec3 localNorm = normal;
-
-                // Organic procedural wobble noise
-                float noiseFreq = 2.2 + uHeat * 2.0;
-                float noiseSpeed = uTime * (2.5 + uSpeed * 4.0 + uHeat * 3.0);
+                vAxisT = (position.y + 1.0) * 0.5; // Normalized height along mesh [0..1]
+                
+                // Organic gelatinous Simplex wobble
+                float noiseFreq = 2.8 + uHeat * 2.0;
+                float noiseSpeed = uTime * (3.0 + uSpeed * 4.0 + uHeat * 4.0);
                 float noiseVal = snoise(position * noiseFreq + vec3(noiseSpeed));
                 vDisplacement = noiseVal;
 
+                vec3 worldPos;
+                vec3 localNorm = normal;
+
                 if (uMode < 0.5) {
-                    // SINGLE HAND MODE: Spherical blob centered at Palm 1
-                    float radius = 0.85 + noiseVal * (0.15 + uSpeed * 0.2);
-                    worldPos = uPalm1 + position * radius;
+                    // SINGLE HAND MODE: Compact squishy blob resting in Palm 1 (not full screen)
+                    float baseRadius = 0.48; // Palm-sized localized blob
+                    
+                    // Gravity droop: pull bottom of sphere down slightly
+                    float gravityDroop = (1.0 - position.y) * 0.12; 
+                    
+                    // Squish factor based on motion speed
+                    float squishY = 1.0 - sin(uTime * 8.0) * 0.06 * (1.0 + uSpeed * 0.5);
+                    float squishXZ = 1.0 / sqrt(squishY);
+                    
+                    vec3 displacedPos = position;
+                    displacedPos.x *= squishXZ;
+                    displacedPos.z *= squishXZ;
+                    displacedPos.y *= squishY;
+                    displacedPos.y -= gravityDroop;
+                    
+                    // Add surface noise wobble
+                    displacedPos += normal * (noiseVal * 0.08 * (1.0 + uHeat * 0.8));
+
+                    worldPos = uPalm1 + displacedPos * baseRadius;
                 } else {
-                    // DUAL HAND MODE: Elastic Bridge between Palm 1 and Palm 2
+                    // DUAL HAND MODE: Dough / Slime stretching with Volume Conservation
                     vec3 bridgeVec = uPalm2 - uPalm1;
                     float dist = length(bridgeVec);
+                    vec3 bridgeDir = dist > 0.0001 ? bridgeVec / dist : vec3(0.0, 1.0, 0.0);
+                    
+                    // Interpolate along stretch line from Hand 1 to Hand 2
                     vec3 bridgeCenter = mix(uPalm1, uPalm2, vAxisT);
 
-                    // Waist pinching effect as distance increases
-                    float waistPinch = 1.0 - sin(vAxisT * 3.14159) * clamp(dist * 0.18, 0.0, 0.65);
-                    float baseRadius = (0.75 + noiseVal * 0.18) * waistPinch;
+                    // Volume conservation physics: r = r0 / sqrt(dist / restDist)
+                    float restDist = 1.2;
+                    float stretchFactor = clamp(dist / restDist, 0.35, 3.5);
+                    
+                    // Parabolic waist pinching: max constriction at center (vAxisT = 0.5)
+                    float waistShape = sin(vAxisT * 3.14159);
+                    
+                    // Radial scale expands when hands press together (fat pancake), shrinks when pulled apart (thin tether)
+                    float radialScale = 0.45 / sqrt(stretchFactor);
+                    float waistPinch = 1.0 - waistShape * (1.0 - 1.0 / sqrt(max(1.0, stretchFactor)));
+                    waistPinch = max(0.18, waistPinch); // Keep structural core from vanishing
+                    
+                    float finalRadius = radialScale * waistPinch;
 
-                    // Compute radial displacement perpendicular to stretch axis
-                    vec3 axisDir = normalize(bridgeVec);
-                    vec3 radial = position - axisDir * dot(position, axisDir);
-                    if (length(radial) < 0.001) radial = vec3(1.0, 0.0, 0.0);
+                    // Compute radial vector perpendicular to stretch line
+                    vec3 radial = position - bridgeDir * dot(position, bridgeDir);
+                    if (length(radial) < 0.0001) radial = vec3(1.0, 0.0, 0.0);
                     radial = normalize(radial);
 
-                    worldPos = bridgeCenter + radial * baseRadius + normal * (noiseVal * 0.12);
+                    // Add gelatin wobble displacement
+                    float wobble = noiseVal * 0.06 * (1.0 + uHeat);
+
+                    worldPos = bridgeCenter + radial * (finalRadius + wobble);
                 }
 
-                // Add thermal vibration at high heat
-                if (uHeat > 0.6) {
-                    worldPos += normal * (sin(uTime * 30.0 + noiseVal * 10.0) * 0.03 * uHeat);
+                // Thermal jitter at high heat
+                if (uHeat > 0.65) {
+                    worldPos += normal * (sin(uTime * 35.0 + noiseVal * 12.0) * 0.02 * uHeat);
                 }
 
                 vWorldPosition = worldPos;
@@ -394,16 +437,16 @@
             varying float vDisplacement;
             varying float vAxisT;
 
-            // Cosine Spectrum Iridescence Palette
+            // Cosine Spectrum Iridescence Palette (Flubber / Soap Sheen)
             vec3 iridescencePalette(float t) {
                 vec3 a = vec3(0.5, 0.5, 0.5);
                 vec3 b = vec3(0.5, 0.5, 0.5);
                 vec3 c = vec3(1.0, 1.0, 1.0);
-                vec3 d = vec3(0.00, 0.33, 0.67); // Cyan, Magenta, Gold
+                vec3 d = vec3(0.00, 0.33, 0.67); // Cyan, Purple, Lime
                 return a + b * cos(6.28318 * (c * t + d));
             }
 
-            // Molten Incandescent Thermal Palette
+            // Molten Incandescent Thermal Lava Palette
             vec3 thermalPalette(float heat) {
                 vec3 coldMagma = vec3(0.12, 0.02, 0.06);
                 vec3 darkRed   = vec3(0.85, 0.08, 0.02);
@@ -422,15 +465,15 @@
                 vec3 N = normalize(vNormal);
                 vec3 V = normalize(vViewPosition);
 
-                // Fresnel View Dependent Effect
+                // Fresnel View Dependent Sheen
                 float fresnel = 1.0 - clamp(dot(N, V), 0.0, 1.0);
                 float fresnelPow = pow(fresnel, 2.2);
 
-                // Iridescent Base Phase Shift
+                // Iridescent Base Color Shift
                 float swirl = vDisplacement * 2.5 + uTime * 0.8 + fresnel * 2.0 + vAxisT * 1.5;
                 vec3 iriColor = iridescencePalette(swirl);
 
-                // Specular Highlight
+                // Glossy Specular Highlight
                 vec3 lightDir = normalize(vec3(0.5, 1.0, 0.8));
                 vec3 H = normalize(lightDir + V);
                 float spec = pow(clamp(dot(N, H), 0.0, 1.0), 32.0);
@@ -440,14 +483,14 @@
                 float localHeat = clamp(uHeat + (vDisplacement * 0.25) * uHeat, 0.0, 1.0);
                 vec3 thermColor = thermalPalette(localHeat);
 
-                // Emissive Thermal Glow Intensity
+                // Emissive Glow
                 float thermalEmissive = pow(localHeat, 1.8) * 1.8 + fresnelPow * uHeat * 1.2;
                 thermColor += vec3(1.0, 0.35, 0.08) * thermalEmissive;
 
-                // Blend Iridescent vs Thermal based on heat level
+                // Smoothly blend Iridescent Flubber vs Thermal Lava based on temperature
                 vec3 finalColor = mix(iriColor, thermColor, smoothstep(0.05, 0.85, uHeat));
 
-                // High Temperature Meltdown Flare
+                // High Temperature Overload Pulses
                 if (uHeat > 0.75) {
                     float pulse = sin(uTime * 18.0) * 0.5 + 0.5;
                     finalColor += vec3(1.0, 0.7, 0.3) * (uHeat - 0.75) * 3.0 * (1.0 + pulse * 0.3);
@@ -817,15 +860,21 @@
 
                 hand1Badge.className = "w-2 h-2 rounded-full bg-cyan-400 glow-cyan";
                 hand1Text.textContent = "Hand 1: Active";
-                hand2Badge.className = "w-2 h-2 rounded-full bg-amber-400 glow-orange";
+                hand2Badge.className = "w-2 h-2 rounded-full bg-purple-400 glow-cyan";
                 hand2Text.textContent = "Hand 2: Active";
             }
         }
+
+        // UI speed readout element
+        const speedValue = document.getElementById('speed-value');
 
         function updateHUDDisplay() {
             // Temperature conversion: 25°C to 1500°C
             const tempC = Math.round(25 + currentHeat * 1475);
             tempValue.textContent = tempC;
+            if (speedValue) {
+                speedValue.textContent = handMotionSpeed.toFixed(1);
+            }
 
             // Gauge Bar Fill Percentage
             const pct = Math.round(currentHeat * 100);
@@ -869,10 +918,11 @@
             const errorMsg = document.getElementById('error-msg');
 
             try {
-                // Initialize Web Audio
+                // Initialize Web Audio & Resume AudioContext for iPad/iOS Safari
                 audioEngine.init();
+                await audioEngine.resume();
 
-                // Setup Front Camera Feed
+                // Setup Front Camera Feed with Safari Constraints
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
@@ -908,7 +958,7 @@
 
             } catch (err) {
                 console.error("Camera Init Error:", err);
-                errorMsg.textContent = "Camera access denied or unsupported device. Please enable front camera access.";
+                errorMsg.textContent = "Camera access denied or unsupported device. Please allow front camera access.";
                 errorMsg.classList.remove('hidden');
             }
         }
