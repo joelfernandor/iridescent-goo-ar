@@ -3,201 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WebAR Iridescent Goo Kneader</title>
+    <title>WebAR Iridescent Hand Aura & Goo</title>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Three.js -->
+
+    <!-- Three.js 3D Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- MediaPipe Hands -->
+
+    <!-- MediaPipe Hands Utilities & Model -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Space+Grotesk:wght@400;600;700&display=swap');
+
         body {
             font-family: 'Space Grotesk', sans-serif;
-            background-color: #050508;
+            background-color: #030308;
             color: #ffffff;
             overflow: hidden;
             touch-action: none;
             user-select: none;
         }
 
-        /* Mirrored video and canvas container for natural selfie-AR interaction */
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Mirrored layout for selfie / front-camera natural orientation */
         .ar-mirror {
             transform: scaleX(-1);
         }
 
-        /* Custom Glassmorphism styles */
+        /* Modern Glassmorphic HUD elements */
         .glass-panel {
-            background: rgba(15, 18, 28, 0.65);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            background: rgba(10, 15, 28, 0.75);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(0, 243, 255, 0.18);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(0, 243, 255, 0.08);
         }
 
-        /* Heat gauge gradient animation */
-        .heat-bar-fill {
-            transition: width 0.15s ease-out, background 0.3s ease;
+        .heat-gauge-fill {
+            transition: width 0.12s ease-out, background-color 0.3s ease;
         }
 
-        /* Glow effects */
-        .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.5); }
-        .glow-orange { box-shadow: 0 0 25px rgba(249, 115, 22, 0.6); }
-        .glow-red { box-shadow: 0 0 35px rgba(239, 68, 68, 0.8); }
-
-        @keyframes pulse-heat {
-            0%, 100% { opacity: 0.8; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.03); }
+        /* Anime Energy Pulse Animation */
+        @keyframes ki-pulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(0, 243, 255, 0.4), inset 0 0 10px rgba(0, 243, 255, 0.2); }
+            50% { box-shadow: 0 0 30px rgba(147, 51, 234, 0.7), inset 0 0 20px rgba(147, 51, 234, 0.4); }
         }
 
-        .animate-heat-pulse {
-            animation: pulse-heat 0.8s infinite ease-in-out;
+        .animate-ki {
+            animation: ki-pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes heat-glow {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.02); opacity: 1; }
+        }
+
+        .animate-supernova {
+            animation: heat-glow 0.6s infinite ease-in-out;
         }
     </style>
 </head>
-<body class="relative w-screen h-screen bg-black">
+<body class="relative w-screen h-screen bg-black overflow-hidden select-none">
 
-    <!-- HIDDEN CAMERA VIDEO INPUT FOR IOS/IPAD SAFARI -->
+    <!-- HIDDEN VIDEO INPUT ELEMENT (Required by Safari iOS with explicit attributes) -->
     <video id="webcam" class="hidden" playsinline webkit-playsinline muted autoplay></video>
 
-    <!-- AR VIEW CONTAINER (Mirrored for front-facing intuitive controls) -->
+    <!-- AR VIEW CONTAINER (Mirrored for intuitive front-camera control) -->
     <div id="ar-container" class="relative w-full h-full ar-mirror overflow-hidden">
-        <!-- Rendered WebGL Canvas -->
         <canvas id="three-canvas" class="w-full h-full absolute inset-0 z-10"></canvas>
     </div>
 
-    <!-- UI OVERLAY LAYER (Unmirrored for crisp legible HUD text) -->
+    <!-- UI HUD OVERLAY (Unmirrored for crisp text readability) -->
     <div class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-6">
         
-        <!-- TOP HUD BAR -->
-        <div class="w-full max-w-2xl mx-auto glass-panel rounded-2xl p-4 flex flex-col gap-3 pointer-events-auto">
-            <!-- Header Row -->
+        <!-- HEADER / ENERGY HUD -->
+        <div class="w-full max-w-xl mx-auto glass-panel rounded-2xl p-4 flex flex-col gap-3 pointer-events-auto animate-ki">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <div id="status-dot" class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse"></div>
-                    <span id="status-text" class="text-xs md:text-sm font-semibold tracking-wider text-cyan-300 uppercase">
-                        Waiting for Hand...
+                    <div id="status-dot" class="w-3.5 h-3.5 rounded-full bg-cyan-400 animate-ping"></div>
+                    <span id="status-text" class="text-xs md:text-sm font-bold tracking-widest text-cyan-300 uppercase font-orbitron">
+                        Awaiting Hand Target...
                     </span>
                 </div>
-                
-                <!-- Speed & Temperature Reading -->
-                <div class="flex items-center gap-4">
-                    <div class="text-xs text-cyan-400/80 font-mono hidden sm:block">
+
+                <div class="flex items-center gap-3">
+                    <div class="text-[11px] text-cyan-400/80 font-mono hidden sm:block">
                         Friction: <span id="speed-value" class="font-bold text-white">0.0</span> m/s
                     </div>
                     <div class="flex items-baseline gap-1">
-                        <span id="temp-value" class="text-2xl md:text-3xl font-bold font-mono text-cyan-300">25</span>
-                        <span class="text-sm font-bold text-gray-400">°C</span>
+                        <span id="temp-value" class="text-2xl md:text-3xl font-black font-orbitron text-cyan-300">25</span>
+                        <span class="text-xs font-bold text-cyan-400">°C</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Temperature Gauge Bar -->
-            <div class="w-full bg-gray-950/80 rounded-full h-4 p-0.5 border border-white/10 overflow-hidden relative">
-                <div id="heat-gauge" class="h-full rounded-full w-[0%] bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-bar-fill"></div>
+            <!-- HEAT / ENERGY PROGRESS BAR -->
+            <div class="w-full bg-gray-950/90 rounded-full h-3.5 p-0.5 border border-cyan-500/30 overflow-hidden relative">
+                <div id="heat-gauge" class="h-full rounded-full w-[0%] bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-gauge-fill"></div>
             </div>
 
-            <!-- Hand Tracking Indicators -->
-            <div class="flex justify-between items-center text-xs text-gray-400 pt-1">
+            <!-- HAND STATUS & GUIDANCE TIP -->
+            <div class="flex justify-between items-center text-xs text-gray-300 pt-0.5 font-medium">
                 <div class="flex items-center gap-1.5" id="hand1-badge">
                     <span class="w-2 h-2 rounded-full bg-gray-600" id="hand1-dot"></span>
-                    <span id="hand1-text">Hand 1: Inactive</span>
+                    <span id="hand1-text">Hand 1: Seeking</span>
                 </div>
-                <div id="guidance-tip" class="font-medium text-amber-300 text-center text-xs md:text-sm animate-bounce">
-                    Show your hand to spawn Goo!
+                <div id="guidance-tip" class="text-amber-300 font-semibold text-center text-xs animate-pulse">
+                    Hold up 1 hand to instantiate Ki Force Field!
                 </div>
                 <div class="flex items-center gap-1.5" id="hand2-badge">
-                    <span id="hand2-text">Hand 2: Inactive</span>
+                    <span id="hand2-text">Hand 2: Offline</span>
                     <span class="w-2 h-2 rounded-full bg-gray-600" id="hand2-dot"></span>
                 </div>
             </div>
         </div>
 
-        <!-- BOTTOM CONTROLS & INFO -->
-        <div class="w-full max-w-md mx-auto flex items-center justify-between pointer-events-auto gap-4">
-            <button id="sound-toggle" class="glass-panel hover:bg-white/10 text-white p-3 rounded-xl transition flex items-center gap-2 text-xs font-semibold">
-                <svg id="sound-icon-on" class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+        <!-- CONTROLS & UTILITIES -->
+        <div class="w-full max-w-sm mx-auto flex items-center justify-between pointer-events-auto gap-3">
+            <button id="sound-toggle" class="glass-panel hover:bg-white/10 text-white px-4 py-2.5 rounded-xl transition flex items-center gap-2 text-xs font-semibold">
+                <svg id="sound-icon" class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                </svg>
                 <span id="sound-label">Audio ON</span>
             </button>
 
-            <button id="reset-btn" class="glass-panel hover:bg-white/10 text-white px-5 py-3 rounded-xl transition flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <button id="reset-btn" class="glass-panel hover:bg-white/10 text-rose-300 px-4 py-2.5 rounded-xl transition flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
                 Cool Down
             </button>
         </div>
     </div>
 
-    <!-- START / LANDING OVERLAY SCREEN -->
+    <!-- START / UNLOCK LANDING SCREEN (Required for iPad Safari camera & audio permission unlock) -->
     <div id="start-overlay" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-        <div class="max-w-md w-full glass-panel rounded-3xl p-6 md:p-8 text-center flex flex-col items-center gap-6 border border-cyan-500/30">
+        <div class="max-w-md w-full glass-panel rounded-3xl p-6 md:p-8 text-center flex flex-col items-center gap-6 border border-cyan-500/40">
             <div class="relative">
-                <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-500 via-purple-500 to-pink-500 animate-spin blur-md opacity-75"></div>
-                <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-amber-400 absolute inset-0 flex items-center justify-center text-3xl">
-                    ✨
+                <div class="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-500 via-purple-600 to-amber-400 animate-spin blur-lg opacity-80"></div>
+                <div class="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-400 via-indigo-600 to-purple-600 absolute inset-0 flex items-center justify-center text-4xl shadow-lg border border-cyan-300/40">
+                    🔮
                 </div>
             </div>
 
             <div class="space-y-2">
-                <h1 class="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-cyan-300 via-purple-300 to-amber-200 bg-clip-text text-transparent">
-                    Palm Force Field WebAR Slime
+                <h1 class="text-2xl md:text-3xl font-black font-orbitron tracking-wide bg-gradient-to-r from-cyan-300 via-purple-300 to-amber-200 bg-clip-text text-transparent">
+                    KI AURA & IRIDESCENT GOO
                 </h1>
                 <p class="text-xs md:text-sm text-gray-300 leading-relaxed">
-                    Spawn a localized force field goo orb hovering right in your palm. Stretch and knead it between both hands to generate incandescent thermal plasma heat!
+                    Instantiate an anime-style liquid force field surrounding your hand. Pull and knead it between both hands to charge thermal energy!
                 </p>
             </div>
 
-            <div class="w-full bg-white/5 rounded-2xl p-4 text-left text-xs text-gray-300 space-y-2.5 border border-white/10">
-                <div class="flex items-center gap-2">
-                    <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-[10px]">1</span>
-                    <span>Allow camera access (iPad / Mobile front FaceTime camera)</span>
+            <div class="w-full bg-white/5 rounded-2xl p-4 text-left text-xs text-gray-300 space-y-2.5 border border-white/10 font-medium">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-5 h-5 rounded-full bg-cyan-500/30 text-cyan-300 flex items-center justify-center font-bold text-[10px]">1</span>
+                    <span>Grant camera access (FaceTime front camera on iPad/iPhone)</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-[10px]">2</span>
-                    <span>Hold up 1 hand to instantiate a tight force field orb in your palm</span>
+                <div class="flex items-center gap-2.5">
+                    <span class="w-5 h-5 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center font-bold text-[10px]">2</span>
+                    <span>Hold up 1 hand: Iridescent Ki force field envelops your palm</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-[10px]">3</span>
-                    <span>Bring 2nd hand close to pull & knead the energy field</span>
+                <div class="flex items-center gap-2.5">
+                    <span class="w-5 h-5 rounded-full bg-amber-500/30 text-amber-300 flex items-center justify-center font-bold text-[10px]">3</span>
+                    <span>Bring 2nd hand close to pull & knead into elastic thermal goo</span>
                 </div>
             </div>
 
-            <button id="start-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white font-bold tracking-wider hover:opacity-90 transition transform active:scale-95 shadow-lg shadow-cyan-500/25">
-                TAP TO START (UNLOCK AUDIO/CAMERA)
+            <button id="start-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white font-bold font-orbitron tracking-wider hover:opacity-95 transition transform active:scale-95 shadow-xl shadow-cyan-500/30 border border-cyan-300/30">
+                START WEBAR EXPERIENCE
             </button>
-            <p id="error-msg" class="text-xs text-rose-400 hidden"></p>
+            
+            <p id="error-msg" class="text-xs text-rose-400 font-semibold hidden"></p>
         </div>
     </div>
 
-    <!-- MELTDOWN / VICTORY MODAL -->
-    <div id="meltdown-modal" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/80 backdrop-blur-lg hidden">
-        <div class="max-w-sm w-full glass-panel rounded-3xl p-6 text-center flex flex-col items-center gap-5 border border-amber-500/50 glow-orange animate-heat-pulse">
-            <div class="text-5xl">💥🔥</div>
+    <!-- THERMAL SUPERNOVA MODAL -->
+    <div id="meltdown-modal" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md hidden">
+        <div class="max-w-sm w-full glass-panel rounded-3xl p-6 text-center flex flex-col items-center gap-5 border border-amber-500/60 animate-supernova">
+            <div class="text-5xl">💥⚡</div>
             <div>
-                <h2 class="text-2xl font-bold text-amber-400 uppercase tracking-wider">Thermal Supernova!</h2>
-                <p class="text-xs text-gray-300 mt-1">The goo reached peak incandescent melting temperature (1500°C)!</p>
+                <h2 class="text-2xl font-black font-orbitron text-amber-400 tracking-wide uppercase">KI SUPERNOVA!</h2>
+                <p class="text-xs text-gray-300 mt-1">The force field goo reached peak incandescent melting temperature (1500°C)!</p>
             </div>
-            <div class="bg-black/40 rounded-xl p-3 w-full border border-amber-500/20">
-                <div class="text-xs text-gray-400">Total Knead Time</div>
-                <div id="melt-time" class="text-xl font-bold text-amber-300 font-mono">12.4s</div>
+            <div class="bg-black/50 rounded-xl p-3 w-full border border-amber-500/30">
+                <div class="text-xs text-gray-400">Total Charge Time</div>
+                <div id="melt-time" class="text-2xl font-bold text-amber-300 font-orbitron">12.4s</div>
             </div>
-            <button id="replay-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 text-white font-bold hover:opacity-90 transition">
-                PLAY AGAIN
+            <button id="replay-btn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 text-white font-bold font-orbitron hover:opacity-90 transition shadow-lg">
+                CHARGE AGAIN
             </button>
         </div>
     </div>
 
-    <!-- MAIN LOGIC SCRIPT -->
+    <!-- MAIN APPLICATION LOGIC -->
     <script>
         // --- 1. WEB AUDIO SYNTHESIZER ---
-        class GooAudioEngine {
+        class KiSoundEngine {
             constructor() {
                 this.ctx = null;
                 this.isMuted = false;
-                this.sizzleOsc = null;
-                this.sizzleGain = null;
+                this.humOsc = null;
+                this.humGain = null;
                 this.stretchOsc = null;
                 this.stretchGain = null;
             }
@@ -207,27 +220,29 @@
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 this.ctx = new AudioCtx();
 
-                // Continuous Thermal Sizzle/Hum Sound
-                this.sizzleOsc = this.ctx.createOscillator();
-                this.sizzleOsc.type = 'sawtooth';
-                this.sizzleGain = this.ctx.createGain();
-                this.sizzleGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                // DBZ Ki / Rasengan Continuous Energy Resonance Hum
+                this.humOsc = this.ctx.createOscillator();
+                this.humOsc.type = 'sawtooth';
                 
                 const filter = this.ctx.createBiquadFilter();
                 filter.type = 'bandpass';
-                filter.frequency.setValueAtTime(800, this.ctx.currentTime);
-                filter.Q.setValueAtTime(3.0, this.ctx.currentTime);
+                filter.frequency.setValueAtTime(650, this.ctx.currentTime);
+                filter.Q.setValueAtTime(4.0, this.ctx.currentTime);
 
-                this.sizzleOsc.connect(filter);
-                filter.connect(this.sizzleGain);
-                this.sizzleGain.connect(this.ctx.destination);
-                this.sizzleOsc.start();
+                this.humGain = this.ctx.createGain();
+                this.humGain.gain.setValueAtTime(0, this.ctx.currentTime);
 
-                // Squishy Stretch Sound Oscillator
+                this.humOsc.connect(filter);
+                filter.connect(this.humGain);
+                this.humGain.connect(this.ctx.destination);
+                this.humOsc.start();
+
+                // Squishy Liquid Stretch Oscillator
                 this.stretchOsc = this.ctx.createOscillator();
                 this.stretchOsc.type = 'sine';
                 this.stretchGain = this.ctx.createGain();
                 this.stretchGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
                 this.stretchOsc.connect(this.stretchGain);
                 this.stretchGain.connect(this.ctx.destination);
                 this.stretchOsc.start();
@@ -239,57 +254,64 @@
                 }
             }
 
-            updateThermalSound(heat) {
+            updateThermalSound(heat, speed) {
                 if (!this.ctx || this.isMuted) return;
                 const now = this.ctx.currentTime;
-                const targetGain = Math.pow(heat, 2.0) * 0.15;
-                const targetFreq = 400 + heat * 1200;
-                this.sizzleGain.gain.setTargetAtTime(targetGain, now, 0.1);
-                this.sizzleOsc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+                
+                // Hum Pitch & Volume rises with thermal heat and hand friction
+                const targetGain = 0.03 + Math.pow(heat, 1.8) * 0.18;
+                const targetFreq = 220 + heat * 950 + speed * 60;
+                
+                this.humGain.gain.setTargetAtTime(targetGain, now, 0.08);
+                this.humOsc.frequency.setTargetAtTime(targetFreq, now, 0.08);
             }
 
-            triggerStretchSound(motionSpeed) {
+            triggerStretchSound(speed) {
                 if (!this.ctx || this.isMuted) return;
                 const now = this.ctx.currentTime;
-                const pitch = 160 + Math.min(motionSpeed * 280, 550);
-                const vol = Math.min(motionSpeed * 0.18, 0.14);
-                this.stretchOsc.frequency.setTargetAtTime(pitch, now, 0.05);
-                this.stretchGain.gain.setTargetAtTime(vol, now, 0.05);
-                this.stretchGain.gain.setTargetAtTime(0, now + 0.15, 0.1);
+                const pitch = 140 + Math.min(speed * 320, 600);
+                const vol = Math.min(speed * 0.15, 0.12);
+
+                this.stretchOsc.frequency.setTargetAtTime(pitch, now, 0.04);
+                this.stretchGain.gain.setTargetAtTime(vol, now, 0.04);
+                this.stretchGain.gain.setTargetAtTime(0, now + 0.12, 0.08);
             }
 
-            playMeltdownSound() {
+            playSupernovaSound() {
                 if (!this.ctx || this.isMuted) return;
                 const now = this.ctx.currentTime;
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
+
                 osc.type = 'triangle';
-                osc.frequency.setValueAtTime(800, now);
-                osc.frequency.exponentialRampToValueAtTime(100, now + 0.8);
-                gain.gain.setValueAtTime(0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.frequency.setValueAtTime(900, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.9);
+
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.9);
+
                 osc.connect(gain);
                 gain.connect(this.ctx.destination);
                 osc.start(now);
-                osc.stop(now + 0.8);
+                osc.stop(now + 0.9);
             }
 
             toggleMute() {
                 this.isMuted = !this.isMuted;
-                if (this.isMuted && this.sizzleGain) {
-                    this.sizzleGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                if (this.isMuted && this.humGain) {
+                    this.humGain.gain.setValueAtTime(0, this.ctx.currentTime);
                 }
                 return !this.isMuted;
             }
         }
 
-        const audioEngine = new GooAudioEngine();
+        const soundEngine = new KiSoundEngine();
 
-        // --- 2. GLSL SHADER DEFINITIONS FOR LOCALIZED FLUBBER/DITTO GOO ---
+        // --- 2. CUSTOM GLSL SHADERS FOR HAND-SURROUNDING KI AURA & DITTO GOO ---
         const gooVertexShader = `
             uniform float uTime;
             uniform float uHeat;
-            uniform float uMode; // 0.0 = Single Hand Force Field, 1.0 = Dual Hand Bridge
+            uniform float uMode; // 0.0 = Single Hand Forcefield, 1.0 = Dual Hand Goo Stretch
             uniform vec3 uPalm1;
             uniform vec3 uPalm2;
             uniform float uSpeed;
@@ -302,7 +324,7 @@
             varying float vAxisT;
             varying vec2 vUv;
 
-            // 3D Simplex Noise Implementation
+            // 3D Simplex Noise Function
             vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
             vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
 
@@ -351,44 +373,44 @@
 
             void main() {
                 vUv = uv;
-                vAxisT = (position.y + 1.0) * 0.5; // Normalized height along mesh [0..1]
+                vAxisT = (position.y + 1.0) * 0.5; // Height axis [0..1]
 
-                // Concentric Force Field Energy Ripple Waves
-                float shieldWave = sin(position.y * 12.0 - uTime * 6.0) * 0.03;
-                float noiseFreq = 3.2 + uHeat * 2.5;
-                float noiseSpeed = uTime * (3.5 + uSpeed * 3.0 + uHeat * 5.0);
+                // Ki Pulse Wave Oscillations
+                float kiWave = sin(position.y * 14.0 - uTime * 7.0) * 0.04;
+                float noiseFreq = 3.5 + uHeat * 2.8;
+                float noiseSpeed = uTime * (3.8 + uSpeed * 2.5 + uHeat * 6.0);
                 float noiseVal = snoise(position * noiseFreq + vec3(noiseSpeed));
-                vDisplacement = noiseVal + shieldWave;
+                vDisplacement = noiseVal + kiWave;
 
                 vec3 worldPos;
                 vec3 localNorm = normal;
 
                 if (uMode < 0.5) {
-                    // SINGLE HAND MODE: Palm Force Field Orb (Compact & clamped to palm size)
-                    float radius = max(0.18, uHandRadius * 0.55);
-                    
-                    // Force Field Pulsation
-                    float pulse = 1.0 + sin(uTime * 5.0) * 0.04 + noiseVal * 0.06;
-                    
-                    vec3 displacedPos = position * pulse;
-                    displacedPos += normal * (noiseVal * 0.05 * (1.0 + uHeat * 0.8));
+                    // MODE 1: SINGLE HAND - FORCE FIELD / AURA ENVELOPING PALM
+                    // Sphere size dynamically calculated from palm landmark span
+                    float radius = max(0.25, uHandRadius * 0.65);
 
+                    // Energy pulsation effect
+                    float pulse = 1.0 + sin(uTime * 6.0) * 0.05 + noiseVal * 0.08;
+                    vec3 displacedPos = position * pulse;
+                    displacedPos += normal * (noiseVal * 0.06 * (1.0 + uHeat * 0.9));
+
+                    // Center sphere over Palm 1
                     worldPos = uPalm1 + displacedPos * radius;
                 } else {
-                    // DUAL HAND MODE: Force Field Energy Tether / Goo Stretch
+                    // MODE 2: DUAL HANDS - GOO TETHER & ELASTIC KNEADING
                     vec3 bridgeVec = uPalm2 - uPalm1;
                     float dist = length(bridgeVec);
                     vec3 bridgeDir = dist > 0.0001 ? bridgeVec / dist : vec3(0.0, 1.0, 0.0);
-                    
                     vec3 bridgeCenter = mix(uPalm1, uPalm2, vAxisT);
 
-                    float restDist = 1.0;
-                    float stretchFactor = clamp(dist / restDist, 0.3, 3.0);
+                    float restDist = 1.1;
+                    float stretchFactor = clamp(dist / restDist, 0.35, 2.8);
                     float waistShape = sin(vAxisT * 3.14159);
                     
-                    float baseR = max(0.15, uHandRadius * 0.45);
+                    float baseR = max(0.20, uHandRadius * 0.50);
                     float radialScale = baseR / sqrt(stretchFactor);
-                    float waistPinch = max(0.15, 1.0 - waistShape * 0.65);
+                    float waistPinch = max(0.18, 1.0 - waistShape * 0.60);
                     
                     float finalRadius = radialScale * waistPinch;
 
@@ -396,14 +418,14 @@
                     if (length(radial) < 0.0001) radial = vec3(1.0, 0.0, 0.0);
                     radial = normalize(radial);
 
-                    float wobble = (noiseVal * 0.05 + shieldWave * 0.5) * (1.0 + uHeat);
+                    float wobble = (noiseVal * 0.06 + kiWave * 0.6) * (1.0 + uHeat * 0.8);
 
                     worldPos = bridgeCenter + radial * (finalRadius + wobble);
                 }
 
-                // Thermal jitter at high heat
+                // Supernova Thermal High Jitter
                 if (uHeat > 0.6) {
-                    worldPos += normal * (sin(uTime * 40.0 + noiseVal * 15.0) * 0.015 * uHeat);
+                    worldPos += normal * (sin(uTime * 45.0 + noiseVal * 20.0) * 0.02 * uHeat);
                 }
 
                 vWorldPosition = worldPos;
@@ -425,7 +447,7 @@
             varying float vAxisT;
             varying vec2 vUv;
 
-            // Cosine Spectrum Iridescence Palette (Force Field Sheen)
+            // Cosine Spectrum Iridescence (Bubble / Oil Sheen)
             vec3 iridescencePalette(float t) {
                 vec3 a = vec3(0.5, 0.5, 0.5);
                 vec3 b = vec3(0.5, 0.5, 0.5);
@@ -434,16 +456,16 @@
                 return a + b * cos(6.28318 * (c * t + d));
             }
 
-            // Thermal Plasma Palette
+            // Anime Thermal Plasma Spectrum
             vec3 thermalPalette(float heat) {
-                vec3 coldPlasma = vec3(0.05, 0.15, 0.35); // Cool forcefield blue
-                vec3 plasmaPurple = vec3(0.5, 0.05, 0.7);
-                vec3 fieryOrange = vec3(1.0, 0.35, 0.05);
-                vec3 incandescentWhite = vec3(1.0, 0.95, 0.9);
+                vec3 cyanKi = vec3(0.05, 0.85, 1.0);      // Cool Ki Energy
+                vec3 purpleAura = vec3(0.65, 0.1, 0.95);  // Charged Aura
+                vec3 fieryPlasma = vec3(1.0, 0.4, 0.05);   // Incandescent Heat
+                vec3 whiteCore = vec3(1.0, 0.98, 0.92);   // Supernova Core
 
-                vec3 col = mix(coldPlasma, plasmaPurple, smoothstep(0.0, 0.3, heat));
-                col = mix(col, fieryOrange, smoothstep(0.3, 0.7, heat));
-                col = mix(col, incandescentWhite, smoothstep(0.7, 1.0, heat));
+                vec3 col = mix(cyanKi, purpleAura, smoothstep(0.0, 0.35, heat));
+                col = mix(col, fieryPlasma, smoothstep(0.35, 0.75, heat));
+                col = mix(col, whiteCore, smoothstep(0.75, 1.0, heat));
                 return col;
             }
 
@@ -451,36 +473,36 @@
                 vec3 N = normalize(vNormal);
                 vec3 V = normalize(vViewPosition);
 
-                // Fresnel Rim Glow for Force Field Effect
+                // Fresnel Rim Glow (Anime Forcefield Shield Rim)
                 float fresnel = 1.0 - clamp(dot(N, V), 0.0, 1.0);
-                float rimGlow = pow(fresnel, 2.5);
+                float rimGlow = pow(fresnel, 2.2);
 
-                // Force Field Hex/Lattice Ring Scan Lines
-                float ringPattern = sin(vAxisT * 40.0 - uTime * 8.0) * 0.5 + 0.5;
-                float lattice = smoothstep(0.7, 0.95, ringPattern) * 0.35;
+                // Energy Lattice Grid Scan Lines
+                float scanline = sin(vAxisT * 50.0 - uTime * 9.0) * 0.5 + 0.5;
+                float lattice = smoothstep(0.68, 0.95, scanline) * 0.35;
 
-                // Iridescent Base Color Shift
-                float swirl = vDisplacement * 2.0 + uTime * 0.7 + fresnel * 2.5;
+                // Iridescent Surface Color Shift
+                float swirl = vDisplacement * 2.2 + uTime * 0.8 + fresnel * 2.8;
                 vec3 iriColor = iridescencePalette(swirl);
 
-                // Add Force Field Energy Grid & Rim
-                vec3 forceFieldRimColor = vec3(0.2, 0.9, 1.0) * rimGlow * 2.2;
-                iriColor += forceFieldRimColor + vec3(lattice * 0.5);
+                // Combine Fresnel Shield Glow & Energy Lattice
+                vec3 kiRimColor = vec3(0.1, 0.9, 1.0) * rimGlow * 2.5;
+                iriColor += kiRimColor + vec3(lattice * 0.6);
 
-                // Specular Highlight
-                vec3 lightDir = normalize(vec3(0.5, 1.0, 0.8));
+                // Specular Glass Specularity
+                vec3 lightDir = normalize(vec3(0.4, 1.0, 0.8));
                 vec3 H = normalize(lightDir + V);
-                float spec = pow(clamp(dot(N, H), 0.0, 1.0), 32.0);
-                iriColor += vec3(spec * 0.8);
+                float spec = pow(clamp(dot(N, H), 0.0, 1.0), 36.0);
+                iriColor += vec3(spec * 0.9);
 
-                // Thermal Plasma Transition
+                // Thermal Color Transition
                 vec3 thermColor = thermalPalette(uHeat);
-                thermColor += vec3(1.0, 0.4, 0.1) * pow(uHeat, 1.5) * 1.5;
+                thermColor += vec3(1.0, 0.5, 0.1) * pow(uHeat, 1.6) * 1.8;
 
-                vec3 finalColor = mix(iriColor, thermColor, smoothstep(0.05, 0.85, uHeat));
+                vec3 finalColor = mix(iriColor, thermColor, smoothstep(0.08, 0.85, uHeat));
 
-                // Force field transparency: center translucent, edges/rim glowing & opaque
-                float alpha = mix(0.75, 0.98, rimGlow) + lattice * 0.2;
+                // Force field transparency: center translucent bubble, edges/rim vibrant & opaque
+                float alpha = mix(0.78, 0.98, rimGlow) + lattice * 0.25;
 
                 gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));
             }
@@ -494,16 +516,15 @@
         const videoElement = document.getElementById('webcam');
         const canvasElement = document.getElementById('three-canvas');
 
-        // State & Tracking Variables
+        // Tracking State & Smooth Interpolation
         let isRunning = false;
-        let currentHeat = 0.0; // 0.0 (Cool) to 1.0 (Meltdown)
+        let currentHeat = 0.0; // 0.0 (Cool) to 1.0 (Supernova)
         let previousPalm1 = new THREE.Vector3();
         let previousPalm2 = new THREE.Vector3();
         let lastFrameTime = performance.now();
         let startTime = 0;
         let isMeltdownTriggered = false;
 
-        // Goo Position Targets
         const targetPalm1 = new THREE.Vector3(0, 0, -5);
         const targetPalm2 = new THREE.Vector3(0, 0, -5);
         const smoothedPalm1 = new THREE.Vector3(0, 0, -5);
@@ -514,7 +535,7 @@
         function initThreeScene() {
             scene = new THREE.Scene();
 
-            // Perspective Camera matching standard front mobile/web cameras
+            // Setup Camera for mobile / iPad aspect ratio
             const aspect = window.innerWidth / window.innerHeight;
             camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 100);
             camera.position.set(0, 0, 8);
@@ -528,7 +549,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-            // Video Background Feed Plane
+            // Camera Video Feed Background Plane
             videoTexture = new THREE.VideoTexture(videoElement);
             videoTexture.minFilter = THREE.LinearFilter;
             videoTexture.magFilter = THREE.LinearFilter;
@@ -539,7 +560,7 @@
             videoMesh.position.z = -12;
             scene.add(videoMesh);
 
-            // Create Deformable Goo Mesh (Icosahedron high poly)
+            // Create Deformable Goo Icosahedron Mesh
             const gooGeo = new THREE.IcosahedronGeometry(1.2, 5);
             gooMaterial = new THREE.ShaderMaterial({
                 vertexShader: gooVertexShader,
@@ -561,29 +582,23 @@
             gooMesh.visible = false;
             scene.add(gooMesh);
 
-            // Spark Particle System for Thermal Emitters
-            const sparkCount = 150;
+            // Thermal Spark Particle System
+            const sparkCount = 180;
             sparkGeometry = new THREE.BufferGeometry();
             const sparkPositions = new Float32Array(sparkCount * 3);
-            const sparkVelocities = [];
 
             for (let i = 0; i < sparkCount; i++) {
                 sparkPositions[i * 3] = (Math.random() - 0.5) * 2;
                 sparkPositions[i * 3 + 1] = (Math.random() - 0.5) * 2;
                 sparkPositions[i * 3 + 2] = (Math.random() - 0.5) * 2;
-                sparkVelocities.push(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.05,
-                    Math.random() * 0.08 + 0.02,
-                    (Math.random() - 0.5) * 0.05
-                ));
             }
 
             sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
             const sparkMat = new THREE.PointsMaterial({
-                color: 0xffaa33,
-                size: 0.12,
+                color: 0x00f3ff,
+                size: 0.14,
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.85,
                 blending: THREE.AdditiveBlending
             });
 
@@ -591,7 +606,7 @@
             sparkParticles.visible = false;
             scene.add(sparkParticles);
 
-            // Hand Joint Visualizer Nodes
+            // Joint Markers for debugging & visual feedback
             const nodeGeo = new THREE.SphereGeometry(0.12, 16, 16);
             const nodeMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, wireframe: true });
             for (let i = 0; i < 2; i++) {
@@ -611,7 +626,6 @@
             camera.aspect = aspect;
             camera.updateProjectionMatrix();
 
-            // Fit video background plane to camera frustum at z = -12
             const distance = camera.position.z - videoMesh.position.z;
             const vFov = (camera.fov * Math.PI) / 180;
             const planeHeight = 2 * Math.tan(vFov / 2) * distance;
@@ -634,7 +648,7 @@
             return camera.position.clone().add(dir.multiplyScalar(distance));
         }
 
-        // --- 4. MEDIAPIPE HANDS TRACKING SETUP ---
+        // --- 4. MEDIAPIPE HAND TRACKING SETUP ---
         let handsTracking;
 
         function initMediaPipeHands() {
@@ -669,19 +683,19 @@
 
             gooMesh.visible = true;
 
-            // Process Hand 1
+            // Process Hand 1 Center & Palm Span
             const lm1 = results.multiHandLandmarks[0];
             const p1X = (lm1[0].x + lm1[5].x + lm1[9].x + lm1[17].x) / 4;
             const p1Y = (lm1[0].y + lm1[5].y + lm1[9].y + lm1[17].y) / 4;
             
-            // Calculate Palm Span (Wrist 0 to Middle MCP 9) for precise localized scaling
+            // Calculate Palm Span (Landmark 0 Wrist to Landmark 9 MCP)
             const dx1 = lm1[9].x - lm1[0].x;
             const dy1 = lm1[9].y - lm1[0].y;
             const palmSpan1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-            const handRadius = Math.max(0.35, palmSpan1 * 4.2);
+            const handRadius = Math.max(0.38, palmSpan1 * 4.5);
             gooMaterial.uniforms.uHandRadius.value = handRadius;
 
-            // Front camera mirrored mapping: X is inverted in NDC
+            // Front Camera Mirror Mapping: Invert X in NDC space
             const ndc1X = (p1X - 0.5) * 2;
             const ndc1Y = -(p1Y - 0.5) * 2;
             
@@ -696,7 +710,8 @@
                 handMarkers[1].visible = false;
             } else if (handCount >= 2) {
                 updateUIState(2);
-                // Process Hand 2
+
+                // Process Hand 2 Center
                 const lm2 = results.multiHandLandmarks[1];
                 const p2X = (lm2[0].x + lm2[5].x + lm2[9].x + lm2[17].x) / 4;
                 const p2Y = (lm2[0].y + lm2[5].y + lm2[9].y + lm2[17].y) / 4;
@@ -712,7 +727,7 @@
             }
         }
 
-        // --- 5. GAME LOOP & HEAT MECHANICS ---
+        // --- 5. MAIN GAME LOOP & THERMAL MECHANICS ---
         function animate() {
             requestAnimationFrame(animate);
 
@@ -721,11 +736,11 @@
             lastFrameTime = now;
 
             if (isRunning) {
-                // Smooth Interpolation for Hand Positions
-                smoothedPalm1.lerp(targetPalm1, 0.25);
-                smoothedPalm2.lerp(targetPalm2, 0.25);
+                // Smooth Lerp target positions to reduce camera landmark jitter
+                smoothedPalm1.lerp(targetPalm1, 0.28);
+                smoothedPalm2.lerp(targetPalm2, 0.28);
 
-                // Calculate Hand Motion Speed
+                // Velocity Calculations
                 const v1 = smoothedPalm1.distanceTo(previousPalm1) / (dt + 0.001);
                 const v2 = smoothedPalm2.distanceTo(previousPalm2) / (dt + 0.001);
                 
@@ -736,27 +751,27 @@
                     const stretchDist = smoothedPalm1.distanceTo(smoothedPalm2);
                     handMotionSpeed = (v1 + v2) * 0.5 + Math.abs(v1 - v2);
 
-                    // Heat Accumulation Rate based on motion speed and stretching
-                    const heatGen = (handMotionSpeed * 0.035 + stretchDist * 0.02 + 0.01) * dt;
+                    // Heat Accumulation Rate based on dual-hand motion speed and stretch distance
+                    const heatGen = (handMotionSpeed * 0.04 + stretchDist * 0.025 + 0.012) * dt;
                     currentHeat = Math.min(1.0, currentHeat + heatGen);
                     
-                    audioEngine.triggerStretchSound(handMotionSpeed);
+                    soundEngine.triggerStretchSound(handMotionSpeed);
                 } else if (activeHandCount === 1) {
                     handMotionSpeed = v1;
-                    if (v1 > 1.2) {
-                        currentHeat = Math.min(1.0, currentHeat + v1 * 0.015 * dt);
+                    if (v1 > 1.4) {
+                        currentHeat = Math.min(1.0, currentHeat + v1 * 0.018 * dt);
                     } else {
-                        // Slow cooling when idle
+                        // Gradual heat dissipation when single hand is calm
                         currentHeat = Math.max(0.0, currentHeat - 0.03 * dt);
                     }
                 } else {
-                    currentHeat = Math.max(0.0, currentHeat - 0.05 * dt);
+                    currentHeat = Math.max(0.0, currentHeat - 0.06 * dt);
                 }
 
-                // Update Sound Synthesis
-                audioEngine.updateThermalSound(currentHeat);
+                // Update Sound Pitch & Resonances
+                soundEngine.updateThermalSound(currentHeat, handMotionSpeed);
 
-                // Update Shader Uniforms
+                // Update GLSL Shader Uniforms
                 gooMaterial.uniforms.uTime.value = now * 0.001;
                 gooMaterial.uniforms.uHeat.value = currentHeat;
                 gooMaterial.uniforms.uMode.value = activeHandCount >= 2 ? 1.0 : 0.0;
@@ -764,13 +779,13 @@
                 gooMaterial.uniforms.uPalm2.value.copy(smoothedPalm2);
                 gooMaterial.uniforms.uSpeed.value = Math.min(handMotionSpeed, 5.0);
 
-                // Update Spark Particles
+                // Update Spark Emitters
                 updateSparks(dt);
 
-                // Update HUD Gauge
+                // Update UI Gauge Bar & Readouts
                 updateHUDDisplay();
 
-                // Check Victory / Meltdown Condition
+                // Check Supernova Condition
                 if (currentHeat >= 1.0 && !isMeltdownTriggered && activeHandCount > 0) {
                     triggerMeltdown();
                 }
@@ -780,7 +795,7 @@
         }
 
         function updateSparks(dt) {
-            if (!sparkParticles || currentHeat < 0.25) {
+            if (!sparkParticles || currentHeat < 0.2) {
                 sparkParticles.visible = false;
                 return;
             }
@@ -789,29 +804,37 @@
             const positions = sparkGeometry.attributes.position.array;
             const count = positions.length / 3;
 
-            // Anchor center for particles
             const center = activeHandCount >= 2 
                 ? smoothedPalm1.clone().add(smoothedPalm2).multiplyScalar(0.5) 
                 : smoothedPalm1;
 
-            for (let i = 0; i < count; i++) {
-                positions[i * 3 + 1] += 0.04 + currentHeat * 0.06; // Upward drift
+            // Change particle colors based on thermal state
+            if (currentHeat > 0.7) {
+                sparkParticles.material.color.setHex(0xff3300);
+            } else if (currentHeat > 0.35) {
+                sparkParticles.material.color.setHex(0xffaa00);
+            } else {
+                sparkParticles.material.color.setHex(0x00f3ff);
+            }
 
-                // Respawn particle
-                if (positions[i * 3 + 1] > center.y + 2.5 || Math.random() < 0.03) {
-                    positions[i * 3] = center.x + (Math.random() - 0.5) * 1.5;
+            for (let i = 0; i < count; i++) {
+                positions[i * 3 + 1] += 0.05 + currentHeat * 0.08; // Upward buoyant drift
+
+                if (positions[i * 3 + 1] > center.y + 2.8 || Math.random() < 0.03) {
+                    positions[i * 3] = center.x + (Math.random() - 0.5) * 1.6;
                     positions[i * 3 + 1] = center.y + (Math.random() - 0.5) * 0.8;
-                    positions[i * 3 + 2] = center.z + (Math.random() - 0.5) * 1.5;
+                    positions[i * 3 + 2] = center.z + (Math.random() - 0.5) * 1.6;
                 }
             }
 
             sparkGeometry.attributes.position.needsUpdate = true;
         }
 
-        // --- 6. UI & HUD UPDATES ---
+        // --- 6. HUD & UI MANAGEMENT ---
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const tempValue = document.getElementById('temp-value');
+        const speedValue = document.getElementById('speed-value');
         const heatGauge = document.getElementById('heat-gauge');
         const hand1Badge = document.getElementById('hand1-dot');
         const hand1Text = document.getElementById('hand1-text');
@@ -821,74 +844,66 @@
 
         function updateUIState(handCount) {
             if (handCount === 0) {
-                statusDot.className = "w-3 h-3 rounded-full bg-cyan-400 animate-pulse";
-                statusText.textContent = "Waiting for Hand...";
-                guidanceTip.textContent = "Show hand to activate Force Field!";
+                statusDot.className = "w-3.5 h-3.5 rounded-full bg-cyan-400 animate-ping";
+                statusText.textContent = "Awaiting Hand Target...";
+                guidanceTip.textContent = "Hold up 1 hand to instantiate Ki Force Field!";
                 hand1Badge.className = "w-2 h-2 rounded-full bg-gray-600";
-                hand1Text.textContent = "Hand 1: Off";
+                hand1Text.textContent = "Hand 1: Seeking";
                 hand2Badge.className = "w-2 h-2 rounded-full bg-gray-600";
-                hand2Text.textContent = "Hand 2: Off";
+                hand2Text.textContent = "Hand 2: Offline";
             } else if (handCount === 1) {
-                statusDot.className = "w-3 h-3 rounded-full bg-purple-400 animate-ping";
-                statusText.textContent = "Palm Force Field Active";
-                guidanceTip.textContent = "Bring 2nd hand to stretch & knead!";
-                hand1Badge.className = "w-2 h-2 rounded-full bg-cyan-400 glow-cyan";
-                hand1Text.textContent = "Hand 1: Active";
+                statusDot.className = "w-3.5 h-3.5 rounded-full bg-cyan-400 animate-pulse";
+                statusText.textContent = "Ki Force Field Active";
+                guidanceTip.textContent = "Bring 2nd hand close to pull & stretch!";
+                hand1Badge.className = "w-2.5 h-2.5 rounded-full bg-cyan-400";
+                hand1Text.textContent = "Hand 1: Locked";
                 hand2Badge.className = "w-2 h-2 rounded-full bg-gray-600";
-                hand2Text.textContent = "Hand 2: Off";
+                hand2Text.textContent = "Hand 2: Offline";
             } else {
                 if (currentHeat < 0.4) {
-                    statusDot.className = "w-3 h-3 rounded-full bg-indigo-400";
-                    statusText.textContent = "Dual-Hand Kneading";
-                    guidanceTip.textContent = "Move & knead faster to generate heat!";
+                    statusDot.className = "w-3.5 h-3.5 rounded-full bg-indigo-400";
+                    statusText.textContent = "Dual Hand Kneading";
+                    guidanceTip.textContent = "Move & stretch faster to generate thermal plasma!";
                 } else if (currentHeat < 0.75) {
-                    statusDot.className = "w-3 h-3 rounded-full bg-amber-400 animate-bounce";
-                    statusText.textContent = "Heating Up! 🔥";
-                    guidanceTip.textContent = "Knead fast! Goo is melting!";
+                    statusDot.className = "w-3.5 h-3.5 rounded-full bg-amber-400 animate-bounce";
+                    statusText.textContent = "Thermal Charging! 🔥";
+                    guidanceTip.textContent = "Knead fast! Goo is heating up!";
                 } else {
-                    statusDot.className = "w-3 h-3 rounded-full bg-rose-500 animate-ping";
-                    statusText.textContent = "CRITICAL HEAT OVERLOAD!";
-                    guidanceTip.textContent = "PUSH TO MAX MELTDOWN!";
+                    statusDot.className = "w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping";
+                    statusText.textContent = "SUPERNOVA CRITICAL!";
+                    guidanceTip.textContent = "CHARGE TO MAX SUPERNOVA!";
                 }
 
-                hand1Badge.className = "w-2 h-2 rounded-full bg-cyan-400 glow-cyan";
-                hand1Text.textContent = "Hand 1: Active";
-                hand2Badge.className = "w-2 h-2 rounded-full bg-purple-400 glow-cyan";
-                hand2Text.textContent = "Hand 2: Active";
+                hand1Badge.className = "w-2.5 h-2.5 rounded-full bg-cyan-400";
+                hand1Text.textContent = "Hand 1: Locked";
+                hand2Badge.className = "w-2.5 h-2.5 rounded-full bg-purple-400";
+                hand2Text.textContent = "Hand 2: Locked";
             }
         }
 
-        // UI speed readout element
-        const speedValue = document.getElementById('speed-value');
-
         function updateHUDDisplay() {
-            // Temperature conversion: 25°C to 1500°C
             const tempC = Math.round(25 + currentHeat * 1475);
             tempValue.textContent = tempC;
-            if (speedValue) {
-                speedValue.textContent = handMotionSpeed.toFixed(1);
-            }
+            if (speedValue) speedValue.textContent = handMotionSpeed.toFixed(1);
 
-            // Gauge Bar Fill Percentage
             const pct = Math.round(currentHeat * 100);
             heatGauge.style.width = `${pct}%`;
 
-            // Dynamic Gradient Colors based on heat
             if (currentHeat < 0.35) {
-                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-bar-fill";
-                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-cyan-300";
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-gauge-fill";
+                tempValue.className = "text-2xl md:text-3xl font-black font-orbitron text-cyan-300";
             } else if (currentHeat < 0.7) {
-                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-purple-500 via-amber-500 to-orange-500 heat-bar-fill";
-                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-amber-300";
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-purple-500 via-amber-500 to-orange-500 heat-gauge-fill";
+                tempValue.className = "text-2xl md:text-3xl font-black font-orbitron text-amber-300";
             } else {
-                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-yellow-300 heat-bar-fill glow-red";
-                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-rose-400 animate-pulse";
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-yellow-300 heat-gauge-fill";
+                tempValue.className = "text-2xl md:text-3xl font-black font-orbitron text-rose-400 animate-pulse";
             }
         }
 
         function triggerMeltdown() {
             isMeltdownTriggered = true;
-            audioEngine.playMeltdownSound();
+            soundEngine.playSupernovaSound();
 
             const meltModal = document.getElementById('meltdown-modal');
             const meltTime = document.getElementById('melt-time');
@@ -905,17 +920,17 @@
             document.getElementById('meltdown-modal').classList.add('hidden');
         }
 
-        // --- 7. INITIALIZATION & CAMERA FEED ---
+        // --- 7. INITIALIZATION & CAMERA STREAM ---
         async function startApp() {
             const startOverlay = document.getElementById('start-overlay');
             const errorMsg = document.getElementById('error-msg');
 
             try {
-                // Initialize Web Audio & Resume AudioContext for iPad/iOS Safari
-                audioEngine.init();
-                await audioEngine.resume();
+                // Initialize Web Audio Context on gesture
+                soundEngine.init();
+                await soundEngine.resume();
 
-                // Setup Front Camera Feed with Safari Constraints
+                // Explicit Front-facing camera getUserMedia stream for iOS/iPad Safari
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
@@ -928,11 +943,9 @@
                 videoElement.srcObject = stream;
                 await videoElement.play();
 
-                // Setup Three.js and MediaPipe
                 initThreeScene();
                 initMediaPipeHands();
 
-                // MediaPipe Frame Capture Loop
                 const cameraUtils = new Camera(videoElement, {
                     onFrame: async () => {
                         await handsTracking.send({ image: videoElement });
@@ -943,29 +956,26 @@
                 
                 await cameraUtils.start();
 
-                // Hide Landing Overlay and Start Game
                 startOverlay.classList.add('hidden');
                 isRunning = true;
                 startTime = performance.now();
                 animate();
 
             } catch (err) {
-                console.error("Camera Init Error:", err);
-                errorMsg.textContent = "Camera access denied or unsupported device. Please allow front camera access.";
+                console.error("WebAR Camera Initialization Failed:", err);
+                errorMsg.textContent = "Camera access error. Please grant front FaceTime camera permission on your iPad/device.";
                 errorMsg.classList.remove('hidden');
             }
         }
 
         // --- 8. EVENT LISTENERS ---
         document.getElementById('start-btn').addEventListener('click', startApp);
-        
         document.getElementById('reset-btn').addEventListener('click', resetHeat);
-        
         document.getElementById('replay-btn').addEventListener('click', resetHeat);
 
         document.getElementById('sound-toggle').addEventListener('click', () => {
             const soundLabel = document.getElementById('sound-label');
-            const isUnmuted = audioEngine.toggleMute();
+            const isUnmuted = soundEngine.toggleMute();
             soundLabel.textContent = isUnmuted ? "Audio ON" : "Audio OFF";
         });
     </script>
