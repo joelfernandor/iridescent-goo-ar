@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebAR Iridescent Goo Kneader</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background-color: #050508;
+            color: #ffffff;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* Mirrored video and canvas container for natural selfie-AR interaction */
+        .ar-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* Custom Glassmorphism styles */
+        .glass-panel {
+            background: rgba(15, 18, 28, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Heat gauge gradient animation */
+        .heat-bar-fill {
+            transition: width 0.15s ease-out, background 0.3s ease;
+        }
+
+        /* Glow effects */
+        .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.5); }
+        .glow-orange { box-shadow: 0 0 25px rgba(249, 115, 22, 0.6); }
+        .glow-red { box-shadow: 0 0 35px rgba(239, 68, 68, 0.8); }
+
+        @keyframes pulse-heat {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.03); }
+        }
+
+        .animate-heat-pulse {
+            animation: pulse-heat 0.8s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen bg-black">
+
+    <!-- HIDDEN CAMERA VIDEO INPUT -->
+    <video id="webcam" class="hidden" playsinline webkit-playsinline muted></video>
+
+    <!-- AR VIEW CONTAINER (Mirrored for front-facing intuitive controls) -->
+    <div id="ar-container" class="relative w-full h-full ar-mirror overflow-hidden">
+        <!-- Rendered WebGL Canvas -->
+        <canvas id="three-canvas" class="w-full h-full absolute inset-0 z-10"></canvas>
+    </div>
+
+    <!-- UI OVERLAY LAYER (Unmirrored for crisp legible HUD text) -->
+    <div class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- TOP HUD BAR -->
+        <div class="w-full max-w-2xl mx-auto glass-panel rounded-2xl p-4 flex flex-col gap-3 pointer-events-auto">
+            <!-- Header Row -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div id="status-dot" class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse"></div>
+                    <span id="status-text" class="text-xs md:text-sm font-semibold tracking-wider text-cyan-300 uppercase">
+                        Waiting for Hands...
+                    </span>
+                </div>
+                
+                <!-- Temperature Reading -->
+                <div class="flex items-baseline gap-1">
+                    <span id="temp-value" class="text-2xl md:text-3xl font-bold font-mono text-cyan-300">25</span>
+                    <span class="text-sm font-bold text-gray-400">°C</span>
+                </div>
+            </div>
+
+            <!-- Temperature Gauge Bar -->
+            <div class="w-full bg-gray-950/80 rounded-full h-4 p-0.5 border border-white/10 overflow-hidden relative">
+                <div id="heat-gauge" class="h-full rounded-full w-[0%] bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-bar-fill"></div>
+            </div>
+
+            <!-- Hand Tracking Indicators -->
+            <div class="flex justify-between items-center text-xs text-gray-400 pt-1">
+                <div class="flex items-center gap-1.5" id="hand1-badge">
+                    <span class="w-2 h-2 rounded-full bg-gray-600" id="hand1-dot"></span>
+                    <span id="hand1-text">Hand 1: Inactive</span>
+                </div>
+                <div id="guidance-tip" class="font-medium text-amber-300 text-center text-xs md:text-sm animate-bounce">
+                    Show your hand to spawn Goo!
+                </div>
+                <div class="flex items-center gap-1.5" id="hand2-badge">
+                    <span id="hand2-text">Hand 2: Inactive</span>
+                    <span class="w-2 h-2 rounded-full bg-gray-600" id="hand2-dot"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM CONTROLS & INFO -->
+        <div class="w-full max-w-md mx-auto flex items-center justify-between pointer-events-auto gap-4">
+            <button id="sound-toggle" class="glass-panel hover:bg-white/10 text-white p-3 rounded-xl transition flex items-center gap-2 text-xs font-semibold">
+                <svg id="sound-icon-on" class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                <span id="sound-label">Audio ON</span>
+            </button>
+
+            <button id="reset-btn" class="glass-panel hover:bg-white/10 text-white px-5 py-3 rounded-xl transition flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Cool Down
+            </button>
+        </div>
+    </div>
+
+    <!-- START / LANDING OVERLAY SCREEN -->
+    <div id="start-overlay" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+        <div class="max-w-md w-full glass-panel rounded-3xl p-6 md:p-8 text-center flex flex-col items-center gap-6 border border-cyan-500/30">
+            <div class="relative">
+                <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-500 via-purple-500 to-pink-500 animate-spin blur-md opacity-75"></div>
+                <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-amber-400 absolute inset-0 flex items-center justify-center text-3xl">
+                    ✨
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <h1 class="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-cyan-300 via-purple-300 to-amber-200 bg-clip-text text-transparent">
+                    WebAR Iridescent Goo
+                </h1>
+                <p class="text-xs md:text-sm text-gray-300 leading-relaxed">
+                    Instantiate interactive iridescent goo with your front camera. Knead and stretch it between two hands to build up dynamic thermal heat!
+                </p>
+            </div>
+
+            <div class="w-full bg-white/5 rounded-2xl p-4 text-left text-xs text-gray-300 space-y-2.5 border border-white/10">
+                <div class="flex items-center gap-2">
+                    <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-[10px]">1</span>
+                    <span>Allow camera access (front camera view)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-[10px]">2</span>
+                    <span>Show 1 hand to spawn the iridescent goo blob</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-[10px]">3</span>
+                    <span>Bring in hand 2 to grab, stretch & knead fast</span>
+                </div>
+            </div>
+
+            <button id="start-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white font-bold tracking-wider hover:opacity-90 transition transform active:scale-95 shadow-lg shadow-cyan-500/25">
+                START EXPERIENCE
+            </button>
+            <p id="error-msg" class="text-xs text-rose-400 hidden"></p>
+        </div>
+    </div>
+
+    <!-- MELTDOWN / VICTORY MODAL -->
+    <div id="meltdown-modal" class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/80 backdrop-blur-lg hidden">
+        <div class="max-w-sm w-full glass-panel rounded-3xl p-6 text-center flex flex-col items-center gap-5 border border-amber-500/50 glow-orange animate-heat-pulse">
+            <div class="text-5xl">💥🔥</div>
+            <div>
+                <h2 class="text-2xl font-bold text-amber-400 uppercase tracking-wider">Thermal Supernova!</h2>
+                <p class="text-xs text-gray-300 mt-1">The goo reached peak incandescent melting temperature (1500°C)!</p>
+            </div>
+            <div class="bg-black/40 rounded-xl p-3 w-full border border-amber-500/20">
+                <div class="text-xs text-gray-400">Total Knead Time</div>
+                <div id="melt-time" class="text-xl font-bold text-amber-300 font-mono">12.4s</div>
+            </div>
+            <button id="replay-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 text-white font-bold hover:opacity-90 transition">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN LOGIC SCRIPT -->
+    <script>
+        // --- 1. WEB AUDIO SYNTHESIZER ---
+        class GooAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = false;
+                this.sizzleOsc = null;
+                this.sizzleGain = null;
+                this.stretchOsc = null;
+                this.stretchGain = null;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioCtx();
+
+                // Continuous Thermal Sizzle/Hum Sound
+                this.sizzleOsc = this.ctx.createOscillator();
+                this.sizzleOsc.type = 'sawtooth';
+                this.sizzleGain = this.ctx.createGain();
+                this.sizzleGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+                filter.Q.setValueAtTime(3.0, this.ctx.currentTime);
+
+                this.sizzleOsc.connect(filter);
+                filter.connect(this.sizzleGain);
+                this.sizzleGain.connect(this.ctx.destination);
+                this.sizzleOsc.start();
+
+                // Squishy Stretch Sound Oscillator
+                this.stretchOsc = this.ctx.createOscillator();
+                this.stretchOsc.type = 'sine';
+                this.stretchGain = this.ctx.createGain();
+                this.stretchGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                this.stretchOsc.connect(this.stretchGain);
+                this.stretchGain.connect(this.ctx.destination);
+                this.stretchOsc.start();
+            }
+
+            updateThermalSound(heat) {
+                if (!this.ctx || this.isMuted) return;
+                const now = this.ctx.currentTime;
+                // Volume ramps up with heat
+                const targetGain = Math.pow(heat, 2.0) * 0.15;
+                const targetFreq = 400 + heat * 1200;
+                this.sizzleGain.gain.setTargetAtTime(targetGain, now, 0.1);
+                this.sizzleOsc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+            }
+
+            triggerStretchSound(motionSpeed) {
+                if (!this.ctx || this.isMuted) return;
+                const now = this.ctx.currentTime;
+                const pitch = 150 + Math.min(motionSpeed * 300, 600);
+                const vol = Math.min(motionSpeed * 0.2, 0.12);
+                this.stretchOsc.frequency.setTargetAtTime(pitch, now, 0.05);
+                this.stretchGain.gain.setTargetAtTime(vol, now, 0.05);
+                this.stretchGain.gain.setTargetAtTime(0, now + 0.15, 0.1);
+            }
+
+            playMeltdownSound() {
+                if (!this.ctx || this.isMuted) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.8);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            }
+
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                if (this.isMuted && this.sizzleGain) {
+                    this.sizzleGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                }
+                return !this.isMuted;
+            }
+        }
+
+        const audioEngine = new GooAudioEngine();
+
+        // --- 2. GLSL SHADER DEFINITIONS FOR IRIDESCENT & THERMAL GOO ---
+        const gooVertexShader = `
+            uniform float uTime;
+            uniform float uHeat;
+            uniform float uMode; // 0.0 = Single Hand, 1.0 = Dual Hand Bridge
+            uniform vec3 uPalm1;
+            uniform vec3 uPalm2;
+            uniform float uSpeed;
+
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewPosition;
+            varying float vDisplacement;
+            varying float vAxisT;
+
+            // 3D Simplex Noise Implementation
+            vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+            vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+            float snoise(vec3 v){
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                vec3 i  = floor(v + dot(v, C.yyy) );
+                vec3 x0 = v - i + dot(i, C.xxx) ;
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min( g.xyz, l.zxy );
+                vec3 i2 = max( g.xyz, l.zxy );
+                vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+                vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+                vec3 x3 = x0 - D.yyy;
+                i = mod(i, 289.0 );
+                vec4 p = permute( permute( permute(
+                           i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                         + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                         + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                float n_ = 0.142857142857;
+                vec3  ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z);
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_ );
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4( x.xy, y.xy );
+                vec4 b1 = vec4( x.zw, y.zw );
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+            }
+
+            void main() {
+                vAxisT = (position.y + 1.0) * 0.5; // Normalized axis [0..1]
+                vec3 worldPos;
+                vec3 localNorm = normal;
+
+                // Organic procedural wobble noise
+                float noiseFreq = 2.2 + uHeat * 2.0;
+                float noiseSpeed = uTime * (2.5 + uSpeed * 4.0 + uHeat * 3.0);
+                float noiseVal = snoise(position * noiseFreq + vec3(noiseSpeed));
+                vDisplacement = noiseVal;
+
+                if (uMode < 0.5) {
+                    // SINGLE HAND MODE: Spherical blob centered at Palm 1
+                    float radius = 0.85 + noiseVal * (0.15 + uSpeed * 0.2);
+                    worldPos = uPalm1 + position * radius;
+                } else {
+                    // DUAL HAND MODE: Elastic Bridge between Palm 1 and Palm 2
+                    vec3 bridgeVec = uPalm2 - uPalm1;
+                    float dist = length(bridgeVec);
+                    vec3 bridgeCenter = mix(uPalm1, uPalm2, vAxisT);
+
+                    // Waist pinching effect as distance increases
+                    float waistPinch = 1.0 - sin(vAxisT * 3.14159) * clamp(dist * 0.18, 0.0, 0.65);
+                    float baseRadius = (0.75 + noiseVal * 0.18) * waistPinch;
+
+                    // Compute radial displacement perpendicular to stretch axis
+                    vec3 axisDir = normalize(bridgeVec);
+                    vec3 radial = position - axisDir * dot(position, axisDir);
+                    if (length(radial) < 0.001) radial = vec3(1.0, 0.0, 0.0);
+                    radial = normalize(radial);
+
+                    worldPos = bridgeCenter + radial * baseRadius + normal * (noiseVal * 0.12);
+                }
+
+                // Add thermal vibration at high heat
+                if (uHeat > 0.6) {
+                    worldPos += normal * (sin(uTime * 30.0 + noiseVal * 10.0) * 0.03 * uHeat);
+                }
+
+                vWorldPosition = worldPos;
+                vNormal = normalize(normalMatrix * localNorm);
+                vec4 mvPosition = modelViewMatrix * vec4(worldPos, 1.0);
+                vViewPosition = -mvPosition.xyz;
+
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+
+        const gooFragmentShader = `
+            uniform float uTime;
+            uniform float uHeat;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewPosition;
+            varying float vDisplacement;
+            varying float vAxisT;
+
+            // Cosine Spectrum Iridescence Palette
+            vec3 iridescencePalette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.00, 0.33, 0.67); // Cyan, Magenta, Gold
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            // Molten Incandescent Thermal Palette
+            vec3 thermalPalette(float heat) {
+                vec3 coldMagma = vec3(0.12, 0.02, 0.06);
+                vec3 darkRed   = vec3(0.85, 0.08, 0.02);
+                vec3 fieryOrange = vec3(1.0, 0.42, 0.05);
+                vec3 brightYellow = vec3(1.0, 0.90, 0.25);
+                vec3 incandescentWhite = vec3(1.0, 0.98, 0.92);
+
+                vec3 col = mix(coldMagma, darkRed, smoothstep(0.0, 0.25, heat));
+                col = mix(col, fieryOrange, smoothstep(0.25, 0.55, heat));
+                col = mix(col, brightYellow, smoothstep(0.55, 0.82, heat));
+                col = mix(col, incandescentWhite, smoothstep(0.82, 1.0, heat));
+                return col;
+            }
+
+            void main() {
+                vec3 N = normalize(vNormal);
+                vec3 V = normalize(vViewPosition);
+
+                // Fresnel View Dependent Effect
+                float fresnel = 1.0 - clamp(dot(N, V), 0.0, 1.0);
+                float fresnelPow = pow(fresnel, 2.2);
+
+                // Iridescent Base Phase Shift
+                float swirl = vDisplacement * 2.5 + uTime * 0.8 + fresnel * 2.0 + vAxisT * 1.5;
+                vec3 iriColor = iridescencePalette(swirl);
+
+                // Specular Highlight
+                vec3 lightDir = normalize(vec3(0.5, 1.0, 0.8));
+                vec3 H = normalize(lightDir + V);
+                float spec = pow(clamp(dot(N, H), 0.0, 1.0), 32.0);
+                iriColor += vec3(spec * 0.7);
+
+                // Thermal Molten Color Modulation
+                float localHeat = clamp(uHeat + (vDisplacement * 0.25) * uHeat, 0.0, 1.0);
+                vec3 thermColor = thermalPalette(localHeat);
+
+                // Emissive Thermal Glow Intensity
+                float thermalEmissive = pow(localHeat, 1.8) * 1.8 + fresnelPow * uHeat * 1.2;
+                thermColor += vec3(1.0, 0.35, 0.08) * thermalEmissive;
+
+                // Blend Iridescent vs Thermal based on heat level
+                vec3 finalColor = mix(iriColor, thermColor, smoothstep(0.05, 0.85, uHeat));
+
+                // High Temperature Meltdown Flare
+                if (uHeat > 0.75) {
+                    float pulse = sin(uTime * 18.0) * 0.5 + 0.5;
+                    finalColor += vec3(1.0, 0.7, 0.3) * (uHeat - 0.75) * 3.0 * (1.0 + pulse * 0.3);
+                }
+
+                gl_FragColor = vec4(finalColor, 0.93);
+            }
+        `;
+
+        // --- 3. THREE.JS SCENE SETUP ---
+        let scene, camera, renderer, videoTexture, videoMesh;
+        let gooMesh, gooMaterial, sparkParticles, sparkGeometry;
+        let handMarkers = [];
+
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('three-canvas');
+
+        // State & Tracking Variables
+        let isRunning = false;
+        let currentHeat = 0.0; // 0.0 (Cool) to 1.0 (Meltdown)
+        let previousPalm1 = new THREE.Vector3();
+        let previousPalm2 = new THREE.Vector3();
+        let lastFrameTime = performance.now();
+        let startTime = 0;
+        let isMeltdownTriggered = false;
+
+        // Goo Position Targets
+        const targetPalm1 = new THREE.Vector3(0, 0, -5);
+        const targetPalm2 = new THREE.Vector3(0, 0, -5);
+        const smoothedPalm1 = new THREE.Vector3(0, 0, -5);
+        const smoothedPalm2 = new THREE.Vector3(0, 0, -5);
+        let activeHandCount = 0;
+        let handMotionSpeed = 0.0;
+
+        function initThreeScene() {
+            scene = new THREE.Scene();
+
+            // Perspective Camera matching standard front mobile/web cameras
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 100);
+            camera.position.set(0, 0, 8);
+
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvasElement,
+                alpha: true,
+                antialias: true,
+                powerPreference: "high-performance"
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Video Background Feed Plane
+            videoTexture = new THREE.VideoTexture(videoElement);
+            videoTexture.minFilter = THREE.LinearFilter;
+            videoTexture.magFilter = THREE.LinearFilter;
+            
+            const videoGeo = new THREE.PlaneGeometry(16, 9);
+            const videoMat = new THREE.MeshBasicMaterial({ map: videoTexture, depthWrite: false });
+            videoMesh = new THREE.Mesh(videoGeo, videoMat);
+            videoMesh.position.z = -12;
+            scene.add(videoMesh);
+
+            // Create Deformable Goo Mesh (Icosahedron high poly)
+            const gooGeo = new THREE.IcosahedronGeometry(1.2, 5);
+            gooMaterial = new THREE.ShaderMaterial({
+                vertexShader: gooVertexShader,
+                fragmentShader: gooFragmentShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uHeat: { value: 0 },
+                    uMode: { value: 0 },
+                    uPalm1: { value: new THREE.Vector3() },
+                    uPalm2: { value: new THREE.Vector3() },
+                    uSpeed: { value: 0 }
+                },
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+
+            gooMesh = new THREE.Mesh(gooGeo, gooMaterial);
+            gooMesh.visible = false;
+            scene.add(gooMesh);
+
+            // Spark Particle System for Thermal Emitters
+            const sparkCount = 150;
+            sparkGeometry = new THREE.BufferGeometry();
+            const sparkPositions = new Float32Array(sparkCount * 3);
+            const sparkVelocities = [];
+
+            for (let i = 0; i < sparkCount; i++) {
+                sparkPositions[i * 3] = (Math.random() - 0.5) * 2;
+                sparkPositions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+                sparkPositions[i * 3 + 2] = (Math.random() - 0.5) * 2;
+                sparkVelocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.05,
+                    Math.random() * 0.08 + 0.02,
+                    (Math.random() - 0.5) * 0.05
+                ));
+            }
+
+            sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+            const sparkMat = new THREE.PointsMaterial({
+                color: 0xffaa33,
+                size: 0.12,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            sparkParticles = new THREE.Points(sparkGeometry, sparkMat);
+            sparkParticles.visible = false;
+            scene.add(sparkParticles);
+
+            // Hand Joint Visualizer Nodes
+            const nodeGeo = new THREE.SphereGeometry(0.12, 16, 16);
+            const nodeMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, wireframe: true });
+            for (let i = 0; i < 2; i++) {
+                const marker = new THREE.Mesh(nodeGeo, nodeMat);
+                marker.visible = false;
+                scene.add(marker);
+                handMarkers.push(marker);
+            }
+
+            window.addEventListener('resize', onWindowResize);
+            adjustVideoPlaneScale();
+        }
+
+        function adjustVideoPlaneScale() {
+            if (!camera || !videoMesh) return;
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = aspect;
+            camera.updateProjectionMatrix();
+
+            // Fit video background plane to camera frustum at z = -12
+            const distance = camera.position.z - videoMesh.position.z;
+            const vFov = (camera.fov * Math.PI) / 180;
+            const planeHeight = 2 * Math.tan(vFov / 2) * distance;
+            const planeWidth = planeHeight * aspect;
+
+            videoMesh.scale.set(planeWidth / 16, planeHeight / 9, 1);
+        }
+
+        function onWindowResize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            adjustVideoPlaneScale();
+        }
+
+        // Convert Normalized Device Coordinates (NDC) to 3D World Space at Depth Z
+        function ndcToWorld(ndcX, ndcY, targetZ = 0) {
+            const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
+            vec.unproject(camera);
+            const dir = vec.sub(camera.position).normalize();
+            const distance = (targetZ - camera.position.z) / dir.z;
+            return camera.position.clone().add(dir.multiplyScalar(distance));
+        }
+
+        // --- 4. MEDIAPIPE HANDS TRACKING SETUP ---
+        let handsTracking;
+
+        function initMediaPipeHands() {
+            handsTracking = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsTracking.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.55,
+                minTrackingConfidence: 0.55
+            });
+
+            handsTracking.onResults(onHandResults);
+        }
+
+        function onHandResults(results) {
+            if (!isRunning) return;
+
+            const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+            activeHandCount = handCount;
+
+            if (handCount === 0) {
+                updateUIState(0);
+                gooMesh.visible = false;
+                sparkParticles.visible = false;
+                handMarkers[0].visible = false;
+                handMarkers[1].visible = false;
+                return;
+            }
+
+            gooMesh.visible = true;
+
+            // Process Hand 1
+            const lm1 = results.multiHandLandmarks[0];
+            // Compute palm center from wrist(0), index_mcp(5), middle_mcp(9), pinky_mcp(17)
+            const p1X = (lm1[0].x + lm1[5].x + lm1[9].x + lm1[17].x) / 4;
+            const p1Y = (lm1[0].y + lm1[5].y + lm1[9].y + lm1[17].y) / 4;
+            
+            // Front camera mirrored mapping: X is inverted in NDC
+            const ndc1X = (p1X - 0.5) * 2;
+            const ndc1Y = -(p1Y - 0.5) * 2;
+            
+            const wPos1 = ndcToWorld(ndc1X, ndc1Y, 0);
+            targetPalm1.copy(wPos1);
+
+            handMarkers[0].position.copy(wPos1);
+            handMarkers[0].visible = true;
+
+            if (handCount === 1) {
+                updateUIState(1);
+                handMarkers[1].visible = false;
+            } else if (handCount >= 2) {
+                updateUIState(2);
+                // Process Hand 2
+                const lm2 = results.multiHandLandmarks[1];
+                const p2X = (lm2[0].x + lm2[5].x + lm2[9].x + lm2[17].x) / 4;
+                const p2Y = (lm2[0].y + lm2[5].y + lm2[9].y + lm2[17].y) / 4;
+
+                const ndc2X = (p2X - 0.5) * 2;
+                const ndc2Y = -(p2Y - 0.5) * 2;
+
+                const wPos2 = ndcToWorld(ndc2X, ndc2Y, 0);
+                targetPalm2.copy(wPos2);
+
+                handMarkers[1].position.copy(wPos2);
+                handMarkers[1].visible = true;
+            }
+        }
+
+        // --- 5. GAME LOOP & HEAT MECHANICS ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const now = performance.now();
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
+            lastFrameTime = now;
+
+            if (isRunning) {
+                // Smooth Interpolation for Hand Positions
+                smoothedPalm1.lerp(targetPalm1, 0.25);
+                smoothedPalm2.lerp(targetPalm2, 0.25);
+
+                // Calculate Hand Motion Speed
+                const v1 = smoothedPalm1.distanceTo(previousPalm1) / (dt + 0.001);
+                const v2 = smoothedPalm2.distanceTo(previousPalm2) / (dt + 0.001);
+                
+                previousPalm1.copy(smoothedPalm1);
+                previousPalm2.copy(smoothedPalm2);
+
+                if (activeHandCount === 2) {
+                    const stretchDist = smoothedPalm1.distanceTo(smoothedPalm2);
+                    handMotionSpeed = (v1 + v2) * 0.5 + Math.abs(v1 - v2);
+
+                    // Heat Accumulation Rate based on motion speed and stretching
+                    const heatGen = (handMotionSpeed * 0.035 + stretchDist * 0.02 + 0.01) * dt;
+                    currentHeat = Math.min(1.0, currentHeat + heatGen);
+                    
+                    audioEngine.triggerStretchSound(handMotionSpeed);
+                } else if (activeHandCount === 1) {
+                    handMotionSpeed = v1;
+                    if (v1 > 1.2) {
+                        currentHeat = Math.min(1.0, currentHeat + v1 * 0.015 * dt);
+                    } else {
+                        // Slow cooling when idle
+                        currentHeat = Math.max(0.0, currentHeat - 0.03 * dt);
+                    }
+                } else {
+                    currentHeat = Math.max(0.0, currentHeat - 0.05 * dt);
+                }
+
+                // Update Sound Synthesis
+                audioEngine.updateThermalSound(currentHeat);
+
+                // Update Shader Uniforms
+                gooMaterial.uniforms.uTime.value = now * 0.001;
+                gooMaterial.uniforms.uHeat.value = currentHeat;
+                gooMaterial.uniforms.uMode.value = activeHandCount >= 2 ? 1.0 : 0.0;
+                gooMaterial.uniforms.uPalm1.value.copy(smoothedPalm1);
+                gooMaterial.uniforms.uPalm2.value.copy(smoothedPalm2);
+                gooMaterial.uniforms.uSpeed.value = Math.min(handMotionSpeed, 5.0);
+
+                // Update Spark Particles
+                updateSparks(dt);
+
+                // Update HUD Gauge
+                updateHUDDisplay();
+
+                // Check Victory / Meltdown Condition
+                if (currentHeat >= 1.0 && !isMeltdownTriggered && activeHandCount > 0) {
+                    triggerMeltdown();
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateSparks(dt) {
+            if (!sparkParticles || currentHeat < 0.25) {
+                sparkParticles.visible = false;
+                return;
+            }
+
+            sparkParticles.visible = true;
+            const positions = sparkGeometry.attributes.position.array;
+            const count = positions.length / 3;
+
+            // Anchor center for particles
+            const center = activeHandCount >= 2 
+                ? smoothedPalm1.clone().add(smoothedPalm2).multiplyScalar(0.5) 
+                : smoothedPalm1;
+
+            for (let i = 0; i < count; i++) {
+                positions[i * 3 + 1] += 0.04 + currentHeat * 0.06; // Upward drift
+
+                // Respawn particle
+                if (positions[i * 3 + 1] > center.y + 2.5 || Math.random() < 0.03) {
+                    positions[i * 3] = center.x + (Math.random() - 0.5) * 1.5;
+                    positions[i * 3 + 1] = center.y + (Math.random() - 0.5) * 0.8;
+                    positions[i * 3 + 2] = center.z + (Math.random() - 0.5) * 1.5;
+                }
+            }
+
+            sparkGeometry.attributes.position.needsUpdate = true;
+        }
+
+        // --- 6. UI & HUD UPDATES ---
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const tempValue = document.getElementById('temp-value');
+        const heatGauge = document.getElementById('heat-gauge');
+        const hand1Badge = document.getElementById('hand1-dot');
+        const hand1Text = document.getElementById('hand1-text');
+        const hand2Badge = document.getElementById('hand2-dot');
+        const hand2Text = document.getElementById('hand2-text');
+        const guidanceTip = document.getElementById('guidance-tip');
+
+        function updateUIState(handCount) {
+            if (handCount === 0) {
+                statusDot.className = "w-3 h-3 rounded-full bg-cyan-400 animate-pulse";
+                statusText.textContent = "Waiting for Hands...";
+                guidanceTip.textContent = "Show hand to camera!";
+                hand1Badge.className = "w-2 h-2 rounded-full bg-gray-600";
+                hand1Text.textContent = "Hand 1: Off";
+                hand2Badge.className = "w-2 h-2 rounded-full bg-gray-600";
+                hand2Text.textContent = "Hand 2: Off";
+            } else if (handCount === 1) {
+                statusDot.className = "w-3 h-3 rounded-full bg-purple-400 animate-ping";
+                statusText.textContent = "Goo Active (1 Hand)";
+                guidanceTip.textContent = "Bring 2nd hand to stretch & knead!";
+                hand1Badge.className = "w-2 h-2 rounded-full bg-cyan-400 glow-cyan";
+                hand1Text.textContent = "Hand 1: Active";
+                hand2Badge.className = "w-2 h-2 rounded-full bg-gray-600";
+                hand2Text.textContent = "Hand 2: Off";
+            } else {
+                if (currentHeat < 0.4) {
+                    statusDot.className = "w-3 h-3 rounded-full bg-indigo-400";
+                    statusText.textContent = "Dual-Hand Kneading";
+                    guidanceTip.textContent = "Move & knead faster to generate heat!";
+                } else if (currentHeat < 0.75) {
+                    statusDot.className = "w-3 h-3 rounded-full bg-amber-400 animate-bounce";
+                    statusText.textContent = "Heating Up! 🔥";
+                    guidanceTip.textContent = "Knead fast! Goo is melting!";
+                } else {
+                    statusDot.className = "w-3 h-3 rounded-full bg-rose-500 animate-ping";
+                    statusText.textContent = "CRITICAL HEAT OVERLOAD!";
+                    guidanceTip.textContent = "PUSH TO MAX MELTDOWN!";
+                }
+
+                hand1Badge.className = "w-2 h-2 rounded-full bg-cyan-400 glow-cyan";
+                hand1Text.textContent = "Hand 1: Active";
+                hand2Badge.className = "w-2 h-2 rounded-full bg-amber-400 glow-orange";
+                hand2Text.textContent = "Hand 2: Active";
+            }
+        }
+
+        function updateHUDDisplay() {
+            // Temperature conversion: 25°C to 1500°C
+            const tempC = Math.round(25 + currentHeat * 1475);
+            tempValue.textContent = tempC;
+
+            // Gauge Bar Fill Percentage
+            const pct = Math.round(currentHeat * 100);
+            heatGauge.style.width = `${pct}%`;
+
+            // Dynamic Gradient Colors based on heat
+            if (currentHeat < 0.35) {
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 heat-bar-fill";
+                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-cyan-300";
+            } else if (currentHeat < 0.7) {
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-purple-500 via-amber-500 to-orange-500 heat-bar-fill";
+                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-amber-300";
+            } else {
+                heatGauge.className = "h-full rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-yellow-300 heat-bar-fill glow-red";
+                tempValue.className = "text-2xl md:text-3xl font-bold font-mono text-rose-400 animate-pulse";
+            }
+        }
+
+        function triggerMeltdown() {
+            isMeltdownTriggered = true;
+            audioEngine.playMeltdownSound();
+
+            const meltModal = document.getElementById('meltdown-modal');
+            const meltTime = document.getElementById('melt-time');
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+            meltTime.textContent = `${elapsed}s`;
+            meltModal.classList.remove('hidden');
+        }
+
+        function resetHeat() {
+            currentHeat = 0.0;
+            isMeltdownTriggered = false;
+            startTime = performance.now();
+            document.getElementById('meltdown-modal').classList.add('hidden');
+        }
+
+        // --- 7. INITIALIZATION & CAMERA FEED ---
+        async function startApp() {
+            const startOverlay = document.getElementById('start-overlay');
+            const errorMsg = document.getElementById('error-msg');
+
+            try {
+                // Initialize Web Audio
+                audioEngine.init();
+
+                // Setup Front Camera Feed
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+
+                videoElement.srcObject = stream;
+                await videoElement.play();
+
+                // Setup Three.js and MediaPipe
+                initThreeScene();
+                initMediaPipeHands();
+
+                // MediaPipe Frame Capture Loop
+                const cameraUtils = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await handsTracking.send({ image: videoElement });
+                    },
+                    width: 1280,
+                    height: 720
+                });
+                
+                await cameraUtils.start();
+
+                // Hide Landing Overlay and Start Game
+                startOverlay.classList.add('hidden');
+                isRunning = true;
+                startTime = performance.now();
+                animate();
+
+            } catch (err) {
+                console.error("Camera Init Error:", err);
+                errorMsg.textContent = "Camera access denied or unsupported device. Please enable front camera access.";
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        // --- 8. EVENT LISTENERS ---
+        document.getElementById('start-btn').addEventListener('click', startApp);
+        
+        document.getElementById('reset-btn').addEventListener('click', resetHeat);
+        
+        document.getElementById('replay-btn').addEventListener('click', resetHeat);
+
+        document.getElementById('sound-toggle').addEventListener('click', () => {
+            const soundLabel = document.getElementById('sound-label');
+            const isUnmuted = audioEngine.toggleMute();
+            soundLabel.textContent = isUnmuted ? "Audio ON" : "Audio OFF";
+        });
+    </script>
+</body>
+</html>
